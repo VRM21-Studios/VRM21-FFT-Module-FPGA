@@ -1,140 +1,211 @@
 # VRM21 FFT Module FPGA
 
-A parameterized, fixed-point FFT/IFFT processing core designed for FPGA-based digital signal processing applications.
+A parameterized FPGA FFT processing core developed as part of the **VRM21 RTL Series**.
 
-The core provides an AXI4-Lite control interface and AXI4-Stream data interfaces, with support for configurable transform length, optional windowing, externally loaded twiddle factors, and iterative in-place FFT processing.
+The design implements an iterative radix-2 FFT/IFFT datapath with AXI4-Lite control, AXI4-Stream data interfaces, programmable twiddle-factor memory, and optional hardware windowing. The core is designed for FPGA-based DSP applications where deterministic fixed-point processing and reusable RTL infrastructure are required.
 
-The design is intended to serve as a reusable FFT building block within the VRM21 RTL/DSP ecosystem.
+The current implementation supports FFT sizes up to **2048 points** and has been verified through RTL simulation and validated on FPGA hardware using a PYNQ-based test environment.
+
+---
 
 ## Features
 
-- Iterative radix-2 FFT/IFFT architecture
-- Maximum transform size of 2048 points
-- Supported transform sizes:
-  - 256 points
-  - 512 points
-  - 1024 points
-  - 2048 points
-- Configurable FFT/IFFT operation
-- Optional input windowing
-- Dedicated AXI4-Stream windowing core
-- External twiddle-factor RAM loading
-- Fixed-point Q1.15 arithmetic
-- Complex 16-bit real + 16-bit imaginary sample format
+- Parameterized iterative FFT/IFFT engine
+- Up to 2048-point transforms
+- Forward FFT and inverse FFT operation
+- Fixed-point complex data path
+- Q1.15 input/output representation
 - AXI4-Lite control and status interface
 - AXI4-Stream input and output interfaces
-- Block RAM inference for FFT data and twiddle storage
-- Parameterized RTL suitable for FPGA synthesis
-- Compatible with Vivado-based FPGA development flows
+- Programmable twiddle-factor BRAM
+- Optional hardware windowing
+- Block RAM inference for FFT data and twiddle memories
+- Configurable FFT length
+- Frame-based processing using AXI4-Stream `TLAST`
+- Simulation result export to CSV
+- FPGA hardware validation through PYNQ
+
+---
 
 ## Architecture
 
-The top-level processing path is organized as:
+The processing chain consists of several functional blocks:
 
 ```text
-                    AXI4-Lite
-                        │
-                        ▼
-              ┌──────────────────┐
-              │ Control / Status │
-              │    Registers     │
-              └────────┬─────────┘
-                       │
-AXI4-Stream Input      │
-      │                │
-      ▼                │
-┌───────────────┐      │
-│   Windowing   │      │
-│     Core      │      │
-└───────┬───────┘      │
-        │              │
-        ▼              │
-┌──────────────────┐   │
-│   FFT Data RAM   │◄──┘
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────────┐
-│ Iterative FFT Engine │
-│      FFT / IFFT      │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────┐
-│   FFT Data RAM   │
-└────────┬─────────┘
-         │
-         ▼
-   AXI4-Stream Output
+                AXI4-Lite
+                    │
+                    ▼
+        ┌──────────────────────┐
+        │ Control / Status     │
+        │ Registers            │
+        └──────────┬───────────┘
+                   │
+                   ▼
+AXI4-Stream   ┌───────────────┐
+Input ───────►│ Windowing     │
+              │ Preprocessor  │
+              └───────┬───────┘
+                      │
+                      ▼
+              ┌───────────────┐
+              │ FFT Data RAM  │
+              └───────┬───────┘
+                      │
+                      ▼
+              ┌───────────────┐
+              │ Iterative     │
+              │ FFT / IFFT    │
+              │ Engine        │
+              └───────┬───────┘
+                      │
+          ┌───────────┴───────────┐
+          │                       │
+          ▼                       ▼
+   Twiddle-Factor RAM       FFT Data RAM
+          │                       │
+          └───────────┬───────────┘
+                      │
+                      ▼
+              AXI4-Stream
+                  Output
 ```
 
-The FFT engine operates iteratively using shared memory rather than requiring a fully parallel FFT datapath. This reduces hardware resource usage at the expense of increased processing latency.
+### Processing Flow
 
-## Data Format
-
-The AXI4-Stream interface uses a 32-bit packed complex sample:
+For FFT operation:
 
 ```text
-31                    16 15                     0
-+-----------------------+-----------------------+
-|     Real / Channel R  |    Imag / Channel L   |
-+-----------------------+-----------------------+
+Input Samples
+     │
+     ▼
+Optional Windowing
+     │
+     ▼
+FFT Data Buffer
+     │
+     ▼
+Iterative FFT
+     │
+     ▼
+Frequency-Domain Output
 ```
 
-For the FFT core, the packed format is interpreted as:
+For IFFT operation:
 
 ```text
-[31:16] = Real
-[15:0]  = Imaginary
+Frequency-Domain Input
+     │
+     ▼
+FFT Data Buffer
+     │
+     ▼
+Iterative IFFT
+     │
+     ▼
+Time-Domain Output
 ```
 
-The dedicated windowing core uses the same 32-bit packed representation.
+---
 
-All sample and coefficient arithmetic is based on signed fixed-point Q1.15 representation unless otherwise specified.
+## Hardware Interface
 
-## Control
+### AXI4-Lite
 
-The FFT core is controlled through AXI4-Lite registers.
+The AXI4-Lite interface provides software access to configuration, status, and twiddle-factor memory.
 
-The main control register provides:
+| Address | Register | Description |
+|---:|---|---|
+| `0x00` | Control | Windowing, FFT/IFFT mode, start |
+| `0x04` | Status | Busy and done status |
+| `0x08` | FFT Length | Active transform size |
+| `0x1000+` | Twiddle RAM | Programmable twiddle factors |
+
+### Control Register
 
 ```text
 Bit 2 : Windowing Enable
+        0 = Bypass
+        1 = Enable
+
 Bit 1 : Transform Mode
-       0 = FFT
-       1 = IFFT
+        0 = FFT
+        1 = IFFT
 
 Bit 0 : Start
+        0 = Idle / Auto-start mode
+        1 = Start operation
 ```
 
-The status register provides:
+For streamed frame processing, the FFT can automatically start after the final sample is received through `TLAST`.
+
+### Status Register
 
 ```text
 Bit 1 : Busy
 Bit 0 : Done
 ```
 
-See [`docs/register_map.md`](docs/register_map.md) for the complete register map.
+---
+
+## AXI4-Stream Data Format
+
+Complex samples are packed into a 32-bit AXI4-Stream word.
+
+```text
+31                         16 15                          0
+┌────────────────────────────┬────────────────────────────┐
+│        Real / Imag*        │        Imag / Real*        │
+└────────────────────────────┴────────────────────────────┘
+```
+
+The exact field ordering depends on the processing interface:
+
+- `vrm_fft_iterative_axi` input/output uses the packed complex representation implemented by the RTL.
+- The accompanying testbenches explicitly decode the corresponding real and imaginary fields.
+- The PYNQ software uses the same 32-bit packed representation when transferring samples through DMA.
+
+`TLAST` marks the final sample of each transform frame.
+
+---
 
 ## Windowing
 
-The top-level FFT design supports optional input windowing.
+The top-level FFT wrapper includes an optional hardware windowing stage.
 
-A dedicated [`vrm_windowing_core`](rtl/vrm_windowing_core.v) is also provided for applications that require windowing as an independent AXI4-Stream processing block.
-
-The current coefficient-generation flow uses a square-root Hann window, commonly referred to as a sine window:
+The window coefficients are stored in a ROM initialized through:
 
 ```text
-Hann[n] = 0.5 * (1 - cos(2πn / (N-1)))
-
-Window[n] = sqrt(Hann[n])
+window_2048.mem
 ```
 
-The coefficients are quantized to unsigned Q1.15 and stored in a memory initialization file.
+The current coefficient-generation flow uses a square-root Hann window:
+
+```text
+Sine Window = sqrt(Hann Window)
+```
+
+This is suitable for weighted overlap-add style processing when complementary analysis/synthesis windows are used.
+
+The windowing block is also available as a standalone AXI4-Stream module:
+
+```text
+vrm_windowing_core
+```
+
+Supported transform lengths currently include:
+
+- 256 points
+- 512 points
+- 1024 points
+- 2048 points
+
+The 2048-point coefficient table is reused for smaller transform sizes by applying the corresponding address step.
+
+---
 
 ## Twiddle Factors
 
-Twiddle factors are generated externally and loaded into the FFT core through the AXI4-Lite interface.
+Twiddle factors are represented using signed Q1.15 fixed-point values.
 
 For an N-point transform:
 
@@ -142,46 +213,94 @@ For an N-point transform:
 W_N^k = exp(-j 2πk/N)
 ```
 
-Each coefficient is stored as:
+The stored format is:
 
 ```text
-[31:16] = Real Q1.15
-[15:0]  = Imaginary Q1.15
+[31:16] = Real
+[15:0]  = Imaginary
 ```
 
-The default configuration provides 1024 twiddle factors for a 2048-point transform.
+For a 2048-point transform, the design requires:
 
-See [`docs/memory_format.md`](docs/memory_format.md).
+```text
+2048 / 2 = 1024
+```
+
+twiddle factors.
+
+The twiddle memory can be initialized externally and uploaded to the FPGA through the AXI4-Lite interface.
+
+---
 
 ## Verification
 
-The repository includes simulation testbenches covering:
+The RTL has been verified using dedicated simulation testbenches covering the main processing paths.
 
-- AXI4-Stream windowing operation
-- 2048-point FFT processing
-- Multi-tone sinusoidal input
-- 2048-point IFFT processing
-- Frequency-domain to time-domain reconstruction
-- Twiddle-factor loading through AXI4-Lite
-- Windowing configuration
-- AXI4-Stream frame handling and TLAST propagation
+### Windowing Test
 
-The provided simulation results are stored under:
+`tb_vrm_windowing_core`
+
+The testbench sends a 2048-sample constant signal through the AXI4-Stream interface and verifies the windowing datapath and frame termination.
+
+### FFT Test
+
+`tb_vrm_fft_axi_sinus`
+
+The testbench generates three sinusoidal components:
 
 ```text
-result/
-├── fft_result.csv
-└── ifft_result.csv
+100 Hz
+300 Hz
+500 Hz
 ```
 
-A detailed result analysis will be added separately after the simulation logs and FPGA validation data have been consolidated.
+at:
 
-FPGA Validation
+```text
+Fs = 48 kHz
+N  = 2048
+```
+
+Windowing is enabled and the resulting FFT spectrum is exported to:
+
+```text
+result/fft_result.csv
+```
+
+### IFFT Test
+
+`tb_vrm_ifft_axi_impulse`
+
+The testbench injects a conjugate-symmetric spectrum at:
+
+```text
+Bin 10
+Bin 2038
+```
+
+and performs a 2048-point IFFT to reconstruct the corresponding time-domain signal.
+
+The output is exported to:
+
+```text
+result/ifft_result.csv
+```
+
+Detailed simulation logs and verification information are available in:
+
+```text
+docs/tb_result.md
+```
+
+---
+
+## FPGA Validation
 
 The FFT processing chain has been validated on FPGA hardware using a PYNQ-based host environment.
 
 The hardware validation flow consists of:
 
+```text
 PYNQ Python Application
         │
         ▼
@@ -203,6 +322,7 @@ vrm_fft_iterative_axi
         │
         ▼
    Python Analysis
+```
 
 The PYNQ application configures the transform length, generates and uploads the Q1.15 twiddle factors, enables hardware windowing, and transfers input/output samples through AXI DMA.
 
@@ -210,6 +330,7 @@ The software analysis flow can process CSV/TXT datasets and generate time-domain
 
 The current hardware configuration uses:
 
+```text
 FFT Size       : 2048 points
 Sample Format  : 32-bit packed complex
 Windowing      : Hardware enabled
@@ -217,30 +338,35 @@ Transform      : Forward FFT
 Interface      : AXI4-Lite + AXI4-Stream
 Data Transfer  : AXI DMA
 Host Platform  : PYNQ
+```
 
 FPGA validation confirms that the RTL can operate as an integrated hardware accelerator rather than only as an RTL simulation model.
 
 Detailed hardware measurements and PYNQ execution logs can be added to the verification documentation as the hardware validation record is expanded.
 
-Software Support
+---
+
+## Software Support
 
 A Python/PYNQ utility is provided for hardware-assisted FFT processing and result visualization.
 
 The software performs:
 
-FPGA bitstream loading
-FFT IP discovery
-AXI DMA buffer allocation
-Twiddle-factor generation
-Twiddle-factor upload
-FFT configuration
-Input sample packing
-DMA-based data transfer
-FPGA output decoding
-Magnitude calculation
-Frequency-domain plotting
+1. FPGA bitstream loading
+2. FFT IP discovery
+3. AXI DMA buffer allocation
+4. Twiddle-factor generation
+5. Twiddle-factor upload
+6. FFT configuration
+7. Input sample packing
+8. DMA-based data transfer
+9. FPGA output decoding
+10. Magnitude calculation
+11. Frequency-domain plotting
 
 For datasets containing multiple FFT frames, the software can process individual frames and average their magnitude spectra.
+
+---
 
 ## Repository Structure
 
@@ -249,7 +375,13 @@ For datasets containing multiple FFT frames, the software can process individual
 ├── rtl/
 │   ├── vrm_fft_iterative_axi.v
 │   ├── vrm_windowing_core.v
-│   └── fft_stage_iterative.v
+│   └── ...
+│
+├── tb/
+│   ├── tb_vrm_fft_axi_sinus.v
+│   ├── tb_vrm_ifft_axi_impulse.v
+│   ├── tb_vrm_windowing_core.v
+│   └── ...
 │
 ├── mem/
 │   ├── twiddle_factors.mem
@@ -259,11 +391,6 @@ For datasets containing multiple FFT frames, the software can process individual
 │   ├── generate_twiddle_factors.py
 │   └── generate_window.py
 │
-├── tb/
-│   ├── tb_vrm_fft_axi_sinus.v
-│   ├── tb_vrm_ifft_axi_impulse.v
-│   └── tb_vrm_windowing_core.v
-│
 ├── result/
 │   ├── fft_result.csv
 │   └── ifft_result.csv
@@ -271,56 +398,87 @@ For datasets containing multiple FFT frames, the software can process individual
 ├── docs/
 │   ├── architecture.md
 │   ├── interface.md
-│   ├── register_map.md
-│   ├── algorithm.md
-│   ├── memory_format.md
-│   └── simulation.md
+│   ├── tb_result.md
+│   └── limitations.md
 │
 └── README.md
 ```
+
+The exact directory names may vary depending on the Vivado project organization.
+
+---
+
+## Fixed-Point Representation
+
+The main datapath uses fixed-point arithmetic to reduce FPGA resource usage and provide deterministic hardware behavior.
+
+The external complex sample format is based on signed 16-bit Q1.15 components.
+
+```text
+Q1.15
+
+Sign
+ │
+ ▼
+┌─┬───────────────────────────────┐
+│S│          Fraction             │
+└─┴───────────────────────────────┘
+  15 fractional bits
+```
+
+Twiddle factors and window coefficients are also represented using 16-bit fixed-point values.
+
+Internal FFT arithmetic may use wider intermediate representations depending on the processing stage.
+
+---
+
+## Current Limitations
+
+The current implementation has several practical limitations:
+
+- Maximum configured transform size is 2048 points.
+- Supported transform lengths are currently limited to the implemented power-of-two configurations.
+- The current coefficient memory is based on a 2048-point window table.
+- Fixed-point quantization introduces numerical error compared with floating-point FFT implementations.
+- Twiddle factors must be loaded or initialized before FFT processing.
+- The current AXI4-Lite implementation expects the address and data write channels to be presented together.
+- The current verification environment focuses primarily on functional correctness rather than exhaustive numerical error characterization.
+- FPGA resource utilization and maximum operating frequency depend on the target FPGA device and synthesis configuration.
+
+Additional implementation-specific limitations are documented in:
+
+```text
+docs/limitations.md
+```
+
+---
 
 ## Status
 
 | Component | Status |
 |---|---|
-| FFT RTL | Implemented |
-| IFFT RTL | Implemented |
-| Iterative FFT Engine | Implemented |
-| AXI4-Lite Control | Implemented |
-| AXI4-Stream Data Path | Implemented |
-| Windowing Core | Implemented |
-| Twiddle RAM | Implemented |
-| Window ROM | Implemented |
-| Simulation Testbench | Available |
-| FFT Simulation | Completed |
-| IFFT Simulation | Completed |
-| FPGA Validation | Completed |
-| Detailed Validation Report | Pending |
+| Iterative FFT engine | Implemented |
+| IFFT mode | Implemented |
+| AXI4-Lite control | Implemented |
+| AXI4-Stream interface | Implemented |
+| Twiddle-factor BRAM | Implemented |
+| Hardware windowing | Implemented |
+| Windowing standalone core | Implemented |
+| RTL simulation | Verified |
+| FFT simulation | Verified |
+| IFFT simulation | Verified |
+| CSV result generation | Verified |
+| FPGA validation | Completed |
+| Extended numerical characterization | Ongoing |
 
-## Dependencies
-
-The top-level design uses the following VRM21 RTL infrastructure:
-
-- `vrm_ram_core` from the VRM21 RTL utilities
-- Vivado FPGA synthesis and simulation environment
-
-The Python scripts require:
-
-- Python 3.x
-- NumPy
-- SciPy
+---
 
 ## License
 
 See the repository license file for licensing terms.
 
-## Documentation
+---
 
-Additional technical documentation:
+## VRM21 RTL Series
 
-- [`docs/architecture.md`](docs/architecture.md)
-- [`docs/interface.md`](docs/interface.md)
-- [`docs/register_map.md`](docs/register_map.md)
-- [`docs/algorithm.md`](docs/algorithm.md)
-- [`docs/memory_format.md`](docs/memory_format.md)
-- [`docs/simulation.md`](docs/simulation.md)
+This FFT core is part of the **VRM21 RTL Series**, a collection of reusable FPGA/RTL building blocks developed for DSP, processor, memory, and hardware acceleration applications.
