@@ -1,4 +1,4 @@
-# VRM21 FFT Core
+# VRM21 FFT Module FPGA
 
 A parameterized, fixed-point FFT/IFFT processing core designed for FPGA-based digital signal processing applications.
 
@@ -176,13 +176,71 @@ result/
 
 A detailed result analysis will be added separately after the simulation logs and FPGA validation data have been consolidated.
 
-## FPGA Validation
+FPGA Validation
 
-The FFT design has also been validated on FPGA hardware.
+The FFT processing chain has been validated on FPGA hardware using a PYNQ-based host environment.
 
-The hardware validation confirms that the RTL can be integrated into an FPGA processing system and operated through the corresponding software-controlled interface.
+The hardware validation flow consists of:
 
-Detailed FPGA validation methodology, PYNQ control code, and hardware logs will be documented separately.
+PYNQ Python Application
+        │
+        ▼
+   AXI DMA Engine
+        │
+        ▼
+vrm_fft_iterative_axi
+        │
+        ├── AXI4-Lite Configuration
+        │
+        ├── Twiddle-Factor BRAM
+        │
+        ├── Hardware Windowing
+        │
+        └── Iterative FFT Engine
+        │
+        ▼
+   AXI DMA Output
+        │
+        ▼
+   Python Analysis
+
+The PYNQ application configures the transform length, generates and uploads the Q1.15 twiddle factors, enables hardware windowing, and transfers input/output samples through AXI DMA.
+
+The software analysis flow can process CSV/TXT datasets and generate time-domain and frequency-domain plots from the FPGA output.
+
+The current hardware configuration uses:
+
+FFT Size       : 2048 points
+Sample Format  : 32-bit packed complex
+Windowing      : Hardware enabled
+Transform      : Forward FFT
+Interface      : AXI4-Lite + AXI4-Stream
+Data Transfer  : AXI DMA
+Host Platform  : PYNQ
+
+FPGA validation confirms that the RTL can operate as an integrated hardware accelerator rather than only as an RTL simulation model.
+
+Detailed hardware measurements and PYNQ execution logs can be added to the verification documentation as the hardware validation record is expanded.
+
+Software Support
+
+A Python/PYNQ utility is provided for hardware-assisted FFT processing and result visualization.
+
+The software performs:
+
+FPGA bitstream loading
+FFT IP discovery
+AXI DMA buffer allocation
+Twiddle-factor generation
+Twiddle-factor upload
+FFT configuration
+Input sample packing
+DMA-based data transfer
+FPGA output decoding
+Magnitude calculation
+Frequency-domain plotting
+
+For datasets containing multiple FFT frames, the software can process individual frames and average their magnitude spectra.
 
 ## Repository Structure
 
