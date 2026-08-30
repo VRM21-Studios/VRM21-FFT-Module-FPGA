@@ -475,7 +475,8 @@ docs/limitations.md
 
 ## License
 
-See the repository license file for licensing terms.
+Licensed under the MIT License.
+Provided as-is, without warranty.
 
 ---
 
