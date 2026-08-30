@@ -1,7 +1,8 @@
 `timescale 1ns / 1ps
 
 // ============================================================================
-// Iterative FFT Processing Engine
+// Module: fft_stage_iterative
+// Description: Iterative FFT Processing Engine
 //
 // Performs an in-place radix-2 FFT/IFFT using external data and twiddle RAM.
 //
