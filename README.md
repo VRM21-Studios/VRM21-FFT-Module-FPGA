@@ -8,6 +8,16 @@ The current implementation supports FFT sizes up to **2048 points** and has been
 
 ---
 
+## Motivation
+
+This project was developed as part of a self-directed exploration of feature extraction and data transformation for hardware-oriented AI and signal-processing systems.
+
+The Fast Fourier Transform provides a practical way to study how data can be represented in the frequency domain and how computationally intensive mathematical transformations can be mapped into different RTL architectures with distinct throughput and resource trade-offs.
+
+The project was therefore intended not only to implement an FFT, but also to explore hardware architectural decisions, memory usage, arithmetic reuse, and the relationship between computational parallelism and FPGA resource utilization.
+
+---
+
 ## Features
 
 - Parameterized iterative FFT/IFFT engine
